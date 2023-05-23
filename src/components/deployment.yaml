@@ -1,0 +1,24 @@
+apiVersion: app/v1
+kind: Development
+metadata:
+  name: orders-deployment
+  labels:
+    name: orders-deployment
+    app: micro-shop
+spec:
+  selector:
+    matchLabels:
+      name: orders-pod
+      app: micro-shop
+  replicas: 1
+  template:
+    restartPolicy: Always
+    containers:
+      - name: orders
+        image: order:latest
+        ports:
+          - containerPort: 3000
+        resources:
+          limits:
+            memory: 128mi
+            cpu: 500M
