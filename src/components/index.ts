@@ -8,7 +8,7 @@ export enum TYPE {
   "Secret",
   "POD",
 }
-class mainTemplateBuilder {
+class TemplateBuilder {
   mainTemplate: any;
   props: Properties;
   configMapTemplate: any;
@@ -232,7 +232,7 @@ class mainTemplateBuilder {
   }
 }
 
-let tmp = new mainTemplateBuilder("app/v1");
+let tmp = new TemplateBuilder("app/v1");
 tmp.setProps({
   appName: "orders",
   projectName: "micro-shop",
@@ -267,4 +267,4 @@ tmp.setProps({
   ],
 });
 
-tmp.toYamlFile("../tempTest");
+tmp.toYamlFile(".");
