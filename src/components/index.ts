@@ -1,28 +1,34 @@
 import YAML from "yaml";
 import fs from "fs";
-import { Properties, imageProps } from "../interface";
+import { Properties, ImageProps } from "../interface";
 
-class mainTemplate {
-  apiVersion: any;
-  kind: any;
-  constructor(apiVersion, kind) {
-    this.apiVersion = apiVersion;
-    this.kind = kind;
-  }
+export enum TYPE {
+  "Deployment",
+  "ConfigMap",
+  "Secret",
+  "POD",
 }
-
 class mainTemplateBuilder {
   mainTemplate: any;
-  apiVersion: any;
-  kind: any;
-  metadataFlag: boolean;
   props: Properties;
+  configMapTemplate: any;
+  secretMapsTemplate: any;
 
-  constructor(apiVersion: string, kind: string) {
-    this.mainTemplate = new mainTemplate(apiVersion, kind);
-    this.apiVersion = apiVersion;
-    this.kind = kind;
-    this.metadataFlag = true;
+  constructor(apiVersion: string) {
+    this.mainTemplate = {
+      apiVersion: apiVersion,
+      kind: "Deployment",
+    };
+    this.configMapTemplate = {
+      apiVersion: "v1",
+      kind: "ConfigMap",
+    };
+
+    this.secretMapsTemplate = {
+      apiVersion: "v1",
+      kind: "Secret",
+      type: "Opaque",
+    };
   }
 
   setProps(props: Properties) {
@@ -36,12 +42,16 @@ class mainTemplateBuilder {
       );
   }
 
-  _metadata(): any {
-    let postFix = "deployment";
-    if (!this.metadataFlag) {
-      postFix = "pod";
-    }
-    this.metadataFlag = false;
+  _metadata(type: number): any {
+    let postFix =
+      type == TYPE.Deployment
+        ? "deployment"
+        : type == TYPE.ConfigMap
+        ? "configmap"
+        : type == TYPE.Secret
+        ? "secret"
+        : "pod";
+
     return {
       name: `${this.props.appName}-${postFix}`,
       labels: {
@@ -51,10 +61,19 @@ class mainTemplateBuilder {
     };
   }
 
-  metadata(): any {
+  metadata(type: number): any {
     this.validate();
-    this.mainTemplate.metadata = this._metadata();
-    return this;
+    if (type === TYPE.Deployment) {
+      this.mainTemplate.metadata = this._metadata(type);
+    } else if (type === TYPE.ConfigMap) {
+      this.configMapTemplate.metadata = this._metadata(type);
+    }
+    else if(type===TYPE.Secret){
+      this.secretMapsTemplate.metadata = this._metadata(type)
+    }
+    else {
+      throw new Error("Type not valid...");
+    }
   }
 
   _selector() {
@@ -66,11 +85,12 @@ class mainTemplateBuilder {
     };
   }
 
-  _generateContainerConfig(images: imageProps[]): any {
+  _generateContainerConfig(): any {
+    const images: ImageProps[] = this.props.containers;
     const configList = [];
     const imgConfig: any = {};
     for (const data of images) {
-      imgConfig.name = data.name;
+      imgConfig.name = data.name ? data.name : this.props.appName;
       imgConfig.image = data.image;
       if (data.imagePullPolicy)
         imgConfig.imagePullPolicy = data.imagePullPolicy;
@@ -91,6 +111,36 @@ class mainTemplateBuilder {
       };
 
       // env setting code here
+      if (data.env) {
+        let envVariables = [];
+        if (data.env.config) {
+          for (let env of data.env.config) {
+            envVariables.push({
+              name: env.name,
+              valueFrom: {
+                configMapKeyRef: {
+                  name: `${this.props.appName}-configmap`,
+                  key: `${env.name}_cfg`,
+                },
+              },
+            });
+          }
+        }
+        if (data.env.secret) {
+          for (let env of data.env.secret) {
+            envVariables.push({
+              name: env.name,
+              valueFrom: {
+                secretKeyRef: {
+                  name: `${this.props.appName}-secret`,
+                  key: `${env.name}_srt`,
+                },
+              },
+            });
+          }
+        }
+        imgConfig.env = envVariables;
+      }
 
       configList.push(imgConfig);
     }
@@ -99,11 +149,11 @@ class mainTemplateBuilder {
 
   template(): any {
     const _template = {
-      metadata: this._metadata,
+      metadata: this._metadata(TYPE.POD),
       restartPolicy: this.props.restartPolicy
         ? this.props.restartPolicy
         : "Always",
-      containers: this._generateContainerConfig(this.props.containers),
+      containers: this._generateContainerConfig(),
     };
 
     return _template;
@@ -115,48 +165,106 @@ class mainTemplateBuilder {
       replicas: this.props.replicas ? this.props.replicas : 1,
       template: this.template(),
     };
-
-    return this;
   }
 
-  build(): any {
+  generateMaps(type:number): any {
+    const images: ImageProps[] = this.props.containers;
+    const data = {};
+    for (let image of images) {
+      if (type == TYPE.ConfigMap && image.env.config) {
+        for (let config of image.env.config) {          
+          data[`${config.name}_cfg`] = config.value;
+        }
+      }
+      if (type == TYPE.Secret && image.env.secret) {
+        for (let config of image.env.secret) {          
+          data[`${config.name}_srt`] = config.value;
+        }
+      }
+    }
+
+    if(type==TYPE.ConfigMap)this.configMapTemplate.data = data;
+    if(type==TYPE.Secret)this.secretMapsTemplate.data = data
+  }
+
+  toJsonFormat() {
+    this.metadata(TYPE.Deployment);
+    this.spec();
     return this.mainTemplate;
   }
 
-  toYamlFormat(jsonObj:any): any {      
+  toYamlFormat(type: number): any {
+    this.metadata(type);
+    let content = {};
+    if (type == TYPE.Deployment) {
+      this.spec();
+      content = this.mainTemplate;
+    }
+    if (type == TYPE.ConfigMap) {
+      this.generateMaps(TYPE.ConfigMap);
+      content = this.configMapTemplate;
+    }
+    if (type == TYPE.Secret) {
+      this.generateMaps(TYPE.Secret);
+      content = this.secretMapsTemplate;
+    }
     const doc = new YAML.Document();
-    let _jsonObj = JSON.parse(JSON.stringify(jsonObj))    
+    let _jsonObj = JSON.parse(JSON.stringify(content));
     doc.contents = _jsonObj;
-    return doc.toString()
+    return doc.toString();
   }
 
-  toYamlFile(path:string,jsonObj:any){
-    const content = this.toYamlFormat(jsonObj)
-    fs.writeFileSync(`${path}/deployment.yaml`, content);
-  }
+  toYamlFile(path: string) {
+    const deploymentContent = this.toYamlFormat(TYPE.Deployment);
+    fs.writeFileSync(`${path}/deployment.yaml`, deploymentContent);
 
+    const configMapContent = this.toYamlFormat(TYPE.ConfigMap);
+    fs.writeFileSync(
+      `${path}/${this.props.appName}-configmap.yaml`,
+      configMapContent
+    );
+
+    const secretMapContent = this.toYamlFormat(TYPE.Secret);
+    fs.writeFileSync(
+      `${path}/${this.props.appName}-secret.yaml`,
+      secretMapContent
+    );
+  }
 }
 
-let tmp = new mainTemplateBuilder("app/v1", "Development");
+let tmp = new mainTemplateBuilder("app/v1");
 tmp.setProps({
   appName: "orders",
   projectName: "micro-shop",
   replicas: 1,
-  restartPolicy: "Always",  
+  restartPolicy: "Always",
 
   containers: [
     {
-      name: "orders",
       image: "order:latest",
-      memory:"128mi",
-      cpu:"500M",
-      ports:[3000]
+      memory: "128mi",
+      cpu: "500M",
+      ports: [3000],
+      env: {
+        config: [
+          {
+            name: "DATABASE_USER",
+            value: "root",
+          },
+          {
+            name: "DATABASE_NAME",
+            value: "Admin",
+          },
+        ],
+        secret: [
+          {
+            name: "DATABASE_PASSWORD",
+            value: "password",
+          },
+        ],
+      },
     },
   ],
 });
-tmp.metadata();
-tmp.spec();
-console.log(tmp.build());
-let jsn = tmp.build()
-tmp.toYamlFormat(jsn)
-tmp.toYamlFile('.',jsn)
+
+tmp.toYamlFile("../tempTest");

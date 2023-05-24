@@ -1,0 +1,18 @@
+{
+    "apiVersion": "v1",
+    "kind": "ConfigMap",
+    "metadata": {
+        "name": "mysql-configmap",
+        "labels": {
+            "name": "mysql-configmap",
+            "app": "micro-shop"
+        }
+    },
+    "data": {
+        "database_url": "db-service",
+        "database_port": "3306",
+        "orders_database_name": "micro_shop_orders",
+        "products_database_name": "micro_shop_products",
+        "default_auth": "[mysqld]\ndefault_authentication_plugin= mysql_native_password\n"
+    }
+}
