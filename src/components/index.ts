@@ -7,18 +7,21 @@ export enum TYPE {
   "ConfigMap",
   "Secret",
   "POD",
+  "Service",
 }
-class TemplateBuilder {
+export class TemplateBuilder {
   mainTemplate: any;
   props: Properties;
   configMapTemplate: any;
   secretMapsTemplate: any;
+  serviceTemplate: any;
 
   constructor(apiVersion: string) {
     this.mainTemplate = {
       apiVersion: apiVersion,
       kind: "Deployment",
     };
+
     this.configMapTemplate = {
       apiVersion: "v1",
       kind: "ConfigMap",
@@ -28,6 +31,11 @@ class TemplateBuilder {
       apiVersion: "v1",
       kind: "Secret",
       type: "Opaque",
+    };
+
+    this.serviceTemplate = {
+      apiVersion: "v1",
+      kind: "Service",
     };
   }
 
@@ -50,6 +58,8 @@ class TemplateBuilder {
         ? "configmap"
         : type == TYPE.Secret
         ? "secret"
+        : type == TYPE.Service
+        ? "service"
         : "pod";
 
     return {
@@ -67,22 +77,23 @@ class TemplateBuilder {
       this.mainTemplate.metadata = this._metadata(type);
     } else if (type === TYPE.ConfigMap) {
       this.configMapTemplate.metadata = this._metadata(type);
-    }
-    else if(type===TYPE.Secret){
-      this.secretMapsTemplate.metadata = this._metadata(type)
-    }
-    else {
+    } else if (type === TYPE.Secret) {
+      this.secretMapsTemplate.metadata = this._metadata(type);
+    } else if (type === TYPE.Service) {
+      this.serviceTemplate.metadata = this._metadata(type);
+    } else {
       throw new Error("Type not valid...");
     }
   }
 
-  _selector() {
-    return {
+  _selector(type:number = TYPE.Deployment) {
+    const data = {
       matchLabels: {
         name: `${this.props.appName}-pod`,
         app: `${this.props.projectName}`,
       },
-    };
+    }
+    return type==TYPE.Deployment?data:data.matchLabels;
   }
 
   _generateContainerConfig(): any {
@@ -147,6 +158,23 @@ class TemplateBuilder {
     return configList;
   }
 
+  _servicePorts() {
+    const images = this.props.containers;
+    const ports = [];
+    if (images) {
+      for (let image of images) {
+        for (const _port of image.ports) {
+          ports.push({
+            port: 80,
+            targetPort: _port,
+          });
+        }
+      }
+    }
+
+    return ports;
+  }
+
   template(): any {
     const _template = {
       metadata: this._metadata(TYPE.POD),
@@ -159,37 +187,44 @@ class TemplateBuilder {
     return _template;
   }
 
-  spec(): any {
-    this.mainTemplate.spec = {
-      selector: this._selector(),
-      replicas: this.props.replicas ? this.props.replicas : 1,
-      template: this.template(),
-    };
+  spec(type: number): any {
+    if (type == TYPE.Deployment) {
+      this.mainTemplate.spec = {
+        selector: this._selector(),
+        replicas: this.props.replicas ? this.props.replicas : 1,
+        template: this.template(),
+      };
+    } else if (type == TYPE.Service) {
+      this.serviceTemplate.spec = {
+        selector: this._selector(TYPE.Service),
+        ports: this._servicePorts(),
+      };
+    }
   }
 
-  generateMaps(type:number): any {
+  generateMaps(type: number): any {
     const images: ImageProps[] = this.props.containers;
     const data = {};
     for (let image of images) {
       if (type == TYPE.ConfigMap && image.env.config) {
-        for (let config of image.env.config) {          
+        for (let config of image.env.config) {
           data[`${config.name}_cfg`] = config.value;
         }
       }
       if (type == TYPE.Secret && image.env.secret) {
-        for (let config of image.env.secret) {          
-          data[`${config.name}_srt`] = config.value;
+        for (let config of image.env.secret) {
+          data[`${config.name}_srt`] = Buffer.from(config.value).toString('base64');
         }
       }
     }
 
-    if(type==TYPE.ConfigMap)this.configMapTemplate.data = data;
-    if(type==TYPE.Secret)this.secretMapsTemplate.data = data
+    if (type == TYPE.ConfigMap) this.configMapTemplate.data = data;
+    if (type == TYPE.Secret) this.secretMapsTemplate.data = data;
   }
 
   toJsonFormat() {
     this.metadata(TYPE.Deployment);
-    this.spec();
+    this.spec(TYPE.Deployment);
     return this.mainTemplate;
   }
 
@@ -197,7 +232,7 @@ class TemplateBuilder {
     this.metadata(type);
     let content = {};
     if (type == TYPE.Deployment) {
-      this.spec();
+      this.spec(TYPE.Deployment);
       content = this.mainTemplate;
     }
     if (type == TYPE.ConfigMap) {
@@ -207,6 +242,10 @@ class TemplateBuilder {
     if (type == TYPE.Secret) {
       this.generateMaps(TYPE.Secret);
       content = this.secretMapsTemplate;
+    }
+    if (type == TYPE.Service) {
+      this.spec(TYPE.Service);
+      content = this.serviceTemplate;
     }
     const doc = new YAML.Document();
     let _jsonObj = JSON.parse(JSON.stringify(content));
@@ -229,42 +268,11 @@ class TemplateBuilder {
       `${path}/${this.props.appName}-secret.yaml`,
       secretMapContent
     );
+
+    const serviceContent = this.toYamlFormat(TYPE.Service);
+    fs.writeFileSync(
+      `${path}/${this.props.appName}-service.yaml`,
+      serviceContent
+    );
   }
 }
-
-let tmp = new TemplateBuilder("app/v1");
-tmp.setProps({
-  appName: "orders",
-  projectName: "micro-shop",
-  replicas: 1,
-  restartPolicy: "Always",
-
-  containers: [
-    {
-      image: "order:latest",
-      memory: "128mi",
-      cpu: "500M",
-      ports: [3000],
-      env: {
-        config: [
-          {
-            name: "DATABASE_USER",
-            value: "root",
-          },
-          {
-            name: "DATABASE_NAME",
-            value: "Admin",
-          },
-        ],
-        secret: [
-          {
-            name: "DATABASE_PASSWORD",
-            value: "password",
-          },
-        ],
-      },
-    },
-  ],
-});
-
-tmp.toYamlFile(".");
