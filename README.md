@@ -24,17 +24,17 @@ Input file example:
 **input.json**
 ```json
 {
-  "appName": "orders",
-  "projectName": "micro-shop",
+  "appName": "<app-name>",
+  "projectName": "<project-name>",
   "replicas": 1,                          //optional
   "restartPolicy": "Always",              //optional
 
   "containers": [
     {
-      "image": "order:latest",
+      "image": "<docker-image>",
       "memory": "128mi",
-      "cpu": "500M",
-      "ports": [3000],
+      "cpu": "500m",
+      "ports": ["<port-number>"],
       "env": {
         "config": [
           {

@@ -8,7 +8,7 @@
     {
       "image": "order:latest",
       "memory": "128mi",
-      "cpu": "500M",
+      "cpu": "500m",
       "ports": [3000],
       "env": {
         "config": [
