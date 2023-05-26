@@ -23,10 +23,11 @@ Input file example:
 
 **input.json**
 ```json
+{
   "appName": "orders",
   "projectName": "micro-shop",
   "replicas": 1,                          //optional
-  "restartPolicy": "Always",       //optional
+  "restartPolicy": "Always",              //optional
 
   "containers": [
     {
