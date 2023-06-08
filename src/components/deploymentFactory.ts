@@ -93,33 +93,3 @@ export class DeploymentFactory {
     return this;
   }
 }
-
-// Usage example:
-
-const data = [
-  {
-    image: "order:latest",
-    memory: "128mi",
-    cpu: "500m",
-    ports: [3000],
-    env: {
-      config: [
-        {
-          name: "DATABASE_USER",
-          value: "root",
-        },
-        {
-          name: "DATABASE_NAME",
-          value: "Admin",
-        },
-      ],
-      secret: [
-        {
-          name: "DATABASE_PASSWORD",
-          value: "password",
-        },
-      ],
-    },
-  },
-];
-
