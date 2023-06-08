@@ -1,33 +1,51 @@
 {
-  "appName": "orders",
-  "projectName": "micro-shop",
-  "replicas": 1,
-  "restartPolicy": "Always",
+  "config": {
+    "appName": "orders",
+    "projectName": "micro-shop",
+    "replicas": 1,
+    "restartPolicy": "Always",
 
-  "containers": [
-    {
-      "image": "order:latest",
-      "memory": "128mi",
-      "cpu": "500m",
-      "ports": [3000],
-      "env": {
-        "config": [
-          {
-            "name": "DATABASE_USER",
-            "value": "root"
-          },
-          {
-            "name": "DATABASE_NAME",
-            "value": "Admin"
-          }
-        ],
-        "secret": [
-          {
-            "name": "DATABASE_PASSWORD",
-            "value": "password"
-          }
-        ]
+    "containers": [
+      {
+        "name": "orders",
+        "image": "order:latest",
+        "memory": "128mi",
+        "cpu": "500m",
+        "ports": [3000],
+        "env": {
+          "config": [
+            {
+              "name": "DATABASE_USER",
+              "value": "root"
+            },
+            {
+              "name": "DATABASE_NAME",
+              "value": "Admin"
+            }
+          ],
+          "secret": [
+            {
+              "name": "DATABASE_PASSWORD",
+              "value": "password"
+            }
+          ]
+        },
+        "volumes": {
+          "statefulSet": [
+            {
+              "name": "www",
+              "mountPath": "/usr"
+            }
+          ],
+          "deployment": [
+            {
+              "name": "www",
+              "mountPath": "/usr"
+            }
+          ]
+        }
       }
-    }
-  ]
+    ]
+  },
+  "requiredFileTypes":["Deployment","ConfigMap","Secret","Service","StatefulSet"]
 }

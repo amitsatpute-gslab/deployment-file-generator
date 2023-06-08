@@ -1,4 +1,3 @@
-
 export class DeploymentFactory {
   createDeployment(name, project) {
     const deployment = {
@@ -52,7 +51,7 @@ export class DeploymentFactory {
       let containerEnvs = [];
 
       //for configmap env
-      for (let env of info.env.config?info.env.config:[]) {
+      for (let env of info.env.config ? info.env.config : []) {
         containerEnvs.push({
           name: env.name,
           valueFrom: {
@@ -64,7 +63,7 @@ export class DeploymentFactory {
         });
       }
       //for secrets env
-      for (let env of info.env.secret?info.env.secret:[]) {
+      for (let env of info.env.secret ? info.env.secret : []) {
         containerEnvs.push({
           name: env.name,
           valueFrom: {
@@ -74,6 +73,16 @@ export class DeploymentFactory {
             },
           },
         });
+      }
+      //volume mounts
+      const containerVolumeMount = [];
+      for (let vm of info.volumes.deployment ? info.volumes.deployment : []) {
+        const obj = {
+          name: vm.name,
+          mountPath: vm.mountPath,
+        };
+        if (vm.readOnly) obj["readOnly"] = vm.readOnly;
+        containerVolumeMount.push(obj);
       }
       const container = {
         name: info.name,
@@ -85,8 +94,10 @@ export class DeploymentFactory {
             memory: info.memory ? info.memory : "500m",
           },
         },
-        env: containerEnvs,
       };
+      if (containerEnvs.length > 0) container["env"] = containerEnvs;
+      if (containerVolumeMount.length > 0)
+        container["volumeMounts"] = containerVolumeMount;
       deployment.spec.template.spec.containers.push(container);
     }
 
